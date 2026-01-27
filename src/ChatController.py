@@ -47,8 +47,8 @@ Rules:
         self.workflow = graph_state.compile(checkpointer=checkpointer)
     def chat(self,user_query,thread_id):
         config = {"configurable": {"thread_id": thread_id}}
- 
         user_query=HumanMessage(content=user_query)
+        print(user_query.content)
         result = self.workflow.invoke({'messages':[user_query]},config=config)
         return result['messages'][-1].content
 
