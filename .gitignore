@@ -1,3 +1,5 @@
 .venv
 .env
 siglip_model
+google_token.json
+credentials.json

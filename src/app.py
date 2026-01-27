@@ -4,11 +4,13 @@ import PIL
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from ChatController import Chat_HuggingFaceController
+from GoogleDrive import DriveAPI
 from imageEmbedCreation import ImgEmbedder
 app = FastAPI()
 app.add_middleware(CORSMiddleware,allow_origins=['*'],allow_headers=['*'],allow_credentials=True,allow_methods=['*'])
 
-
+driveapi = DriveAPI()
+driveapi.__init__()
 MODEL = 'meta-llama/Meta-Llama-3-8B-Instruct'
 DB_URI = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
 
