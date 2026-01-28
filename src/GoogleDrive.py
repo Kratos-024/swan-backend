@@ -1,59 +1,87 @@
 from langchain_google_community import GoogleDriveLoader
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 import os
-import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
+import io
+SCOPE = ['https://www.googleapis.com/auth/drive','https://www.googleapis.com/auth/drive.file']
 class DriveAPI:
     def __init__(self):
-       
-        self.cred_path = '../credentials.json'  
-        self.token_path = '../google_token.json' 
-        self.folder_id = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4' 
+        self.cred_path = '../credentials.json'
+        self.token_path = '../google_token.json'
+        self.folder_id = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4'
         self.creds = None
+        self.cred_state = False
+        self.cred_url = None
+        self.loader = None
+        self.flow = None 
 
+        
         if os.path.exists(self.token_path):
             self.creds = Credentials.from_authorized_user_file(self.token_path)
-            
-        if not self.creds or not self.creds.valid:
-            if self.creds and self.creds.expired and self.creds.refresh_token:
-                self.creds.refresh(Request())
+        
+        if self.creds and self.creds.valid:
+            self.cred_state = True
+        elif self.creds and self.creds.expired and self.creds.refresh_token:
+            self.creds.refresh(Request())
+            self.cred_state = True
+            with open(self.token_path, 'w') as f:
+                f.write(self.creds.to_json())
+        
+        else:
+            self.cred_state = False
+            if os.environ.get("PROD") == "true":
+                redirect_uri = os.environ.get("PROD_URL") 
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                        self.cred_path, 
-                        scopes=['https://www.googleapis.com/auth/drive']
-                    )
-                self.creds = flow.run_local_server(port=0)
+                redirect_uri = "http://127.0.0.1:8000/oauth2callback"  
+
+            self.flow = Flow.from_client_secrets_file(
+                self.cred_path,
+                scopes=SCOPE,
+                redirect_uri=redirect_uri
+            )
+
+            self.cred_url, _ = self.flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true'
+            )
+
+        if self.cred_state:
+            self.loader = GoogleDriveLoader(
+                folder_id=self.folder_id,
+                token_path=self.token_path,
+                credentials_path=self.cred_path,
+                recursive=False
+            )
+
+    def finalize_login(self, code):
+        self.flow.fetch_token(code=code)
+        self.creds = self.flow.credentials
+        
+        with open(self.token_path, 'w') as f:
+            f.write(self.creds.to_json())
             
-
-            with open(self.token_path, 'w') as token:
-                token.write(self.creds.to_json())
-
-      
+        self.cred_state = True
+        
         self.loader = GoogleDriveLoader(
             folder_id=self.folder_id,
             token_path=self.token_path,
             credentials_path=self.cred_path,
             recursive=False
         )
-
+        return True
     def upload_file(self, filename):
         try:
             service = build("drive", "v3", credentials=self.creds)
-            
-         
             file_metadata = {
                 "name": filename,
                 "parents": [self.folder_id] 
             }
-
             media = MediaFileUpload(filename, mimetype='application/octet-stream')
-
-        
             file = service.files().create(
                 body=file_metadata, 
 
@@ -67,7 +95,7 @@ class DriveAPI:
         except HttpError as error:
             print(f"error: {error}")
             return None
-
+    
     def download_file(self, file_id, output_filename):
         try:
             service = build('drive', 'v3', credentials=self.creds)
@@ -122,5 +150,3 @@ class DriveAPI:
         return sendFilesMime
 
 
-drive = DriveAPI()
-drive.get_documents()
