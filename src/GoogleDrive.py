@@ -8,25 +8,21 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
-
 class DriveAPI:
     def __init__(self):
        
         self.cred_path = '../credentials.json'  
         self.token_path = '../google_token.json' 
-        self.folder_id = '13jA4Xa3vcmzfKm424zYbszhjfd5amb3l' 
+        self.folder_id = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4' 
         self.creds = None
 
         if os.path.exists(self.token_path):
             self.creds = Credentials.from_authorized_user_file(self.token_path)
             
-      
         if not self.creds or not self.creds.valid:
             if self.creds and self.creds.expired and self.creds.refresh_token:
-                print("Refreshing expired token...")
                 self.creds.refresh(Request())
             else:
-                print("Logging in via Browser...")
                 flow = InstalledAppFlow.from_client_secrets_file(
                         self.cred_path, 
                         scopes=['https://www.googleapis.com/auth/drive']
@@ -44,7 +40,6 @@ class DriveAPI:
             credentials_path=self.cred_path,
             recursive=False
         )
-        print("Authentication Successful.")
 
     def upload_file(self, filename):
         try:
@@ -61,12 +56,12 @@ class DriveAPI:
         
             file = service.files().create(
                 body=file_metadata, 
+
                 media_body=media, 
                 fields="id"
             ).execute()
             
             file_id = file.get("id")
-            print(f'Upload Complete File ID: "{file_id}"')
             return file_id
 
         except HttpError as error:
@@ -90,3 +85,42 @@ class DriveAPI:
 
         except HttpError as error:
             print(f"Download error: {error}")
+    def get_documents(self):
+        try:
+            service = build('drive', 'v3', credentials=self.creds)
+            files = []
+            page_token = None
+            
+            while True:
+        
+                query = f"'{self.folder_id}' in parents "
+                response = (
+                    service.files().list(
+                        q=f'{query}',
+                        spaces='drive',
+                        fields="nextPageToken, files(id, name, mimeType)", 
+                        pageToken=page_token,
+                        supportsAllDrives=True, 
+                        includeItemsFromAllDrives=True
+                    ).execute()
+                )
+                
+                found_files = response.get('files', [])
+                sendFilesMime = []
+                for file in found_files:
+                    sendFilesMime.append({"name":file.get('name'),"type":file.get('mimeType'), 'id':file.get('id')})
+                files.extend(found_files)
+                page_token = response.get("nextPageToken", None)
+                
+                if page_token is None:
+                    break
+                    
+        except HttpError as error:
+            print(f"An error occurred: {error}")
+            files = None
+
+        return sendFilesMime
+
+
+drive = DriveAPI()
+drive.get_documents()
