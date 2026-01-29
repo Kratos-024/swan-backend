@@ -13,13 +13,13 @@ class DriveAPI:
     def __init__(self):
         self.cred_path = '../credentials.json'
         self.token_path = '../google_token.json'
-        self.folder_id = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4'
+        self.parentImgVectorsFolderID = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4'
         self.creds = None
         self.cred_state = False
         self.cred_url = None
         self.loader = None
         self.flow = None 
-
+        self.parentPdfVectorsFolderID = None
         
         if os.path.exists(self.token_path):
             self.creds = Credentials.from_authorized_user_file(self.token_path)
@@ -57,7 +57,27 @@ class DriveAPI:
                 credentials_path=self.cred_path,
                 recursive=False
             )
-
+        if not (self.parentPdfVectorsFolderID and self.folder_id):
+            self.create_initial_folders()
+    def create_initial_folders(self):
+        try:
+            service = build('drive','v3',credentials=self.creds)
+            file_pdfEmb_metadata = {
+                 'name':"ImgVectors",
+                 "mimeType": "application/vnd.google-apps.folder",
+            }
+            file_imgEmb_metadata = {
+                'name':"PdfVectors",
+                 "mimeType": "application/vnd.google-apps.folder",
+            }
+            file_Img_vectors = service.files().create(body=file_pdfEmb_metadata,fields="id").execute()
+            file_Pdf_vectors = service.files().create(body=file_imgEmb_metadata,fields="id").execute()
+           
+            self.parentPdfVectorsFolderID=file_Pdf_vectors.get('id')
+            self.parentImgVectorsFolderID=file_Img_vectors.get('id')
+            return {'success':True}
+        except Exception as e:
+            print('error occured in create_initial_folders',e)
     def finalize_login(self, code):
         self.flow.fetch_token(code=code)
         self.creds = self.flow.credentials
@@ -74,17 +94,16 @@ class DriveAPI:
             recursive=False
         )
         return True
-    def upload_file(self, filename):
+    def upload_file(self,filename):
         try:
             service = build("drive", "v3", credentials=self.creds)
             file_metadata = {
                 "name": filename,
-                "parents": [self.folder_id] 
+                "parents": [self.parentPdfVectorsFolderID] 
             }
             media = MediaFileUpload(filename, mimetype='application/octet-stream')
             file = service.files().create(
                 body=file_metadata, 
-
                 media_body=media, 
                 fields="id"
             ).execute()
@@ -127,6 +146,41 @@ class DriveAPI:
             else:
                 print("Some other error")
                 return False
+    def get_all_pdf_vectors(self):
+        try:
+            service = build('drive', 'v3', credentials=self.creds)
+            files = []
+            page_token = None
+            
+            while True:
+        
+                query = f"'{self.parentPdfVectorsFolderID}' in parents "
+                response = (
+                    service.files().list(
+                        q=f'{query}',
+                        spaces='drive',
+                        fields="nextPageToken, files(id, name, mimeType)", 
+                        pageToken=page_token,
+                        supportsAllDrives=True, 
+                        includeItemsFromAllDrives=True
+                    ).execute()
+                )
+                
+                found_files = response.get('files', [])
+                sendFilesMime = []
+                for file in found_files:
+                    sendFilesMime.append({"name":file.get('name'),"type":file.get('mimeType'), 'id':file.get('id')})
+                files.extend(found_files)
+                page_token = response.get("nextPageToken", None)
+                
+                if page_token is None:
+                    break
+                    
+        except HttpError as error:
+            print(f"An error occurred: {error}")
+            files = None
+
+        return sendFilesMime
     def get_documents(self):
         try:
             service = build('drive', 'v3', credentials=self.creds)

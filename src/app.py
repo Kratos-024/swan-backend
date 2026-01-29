@@ -13,7 +13,7 @@ app.add_middleware(CORSMiddleware,allow_origins=['*'],allow_headers=['*'],allow_
 MODEL = 'meta-llama/Meta-Llama-3-8B-Instruct'
 DB_URI = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
 IMAGE_MODEL_FOLDER = "../siglip_model"
-PDF_MODEL_FOLDER='../pdf_embedder ' 
+PDF_MODEL_FOLDER='../pdf_embeder-bge-base' 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 img_embedder = ImgEmbedder(IMAGE_MODEL_FOLDER)
 chat_model = Chat_HuggingFaceController(MODEL,DB_URI)
@@ -39,8 +39,8 @@ def testing():
 
 def check_drive_auth():
     try:
-        if not mydrive.cred_state:
-            url_string = mydrive.cred_url
+        if not mydriveInst.cred_state:
+            url_string = mydriveInst.cred_url
             return {
                 'url_string':url_string,"auth":False
             }
@@ -108,7 +108,7 @@ async def handle_callback(request: Request):
 
 
 
-@app.post('/create-embed')
+@app.post('/send-pdfbuffer')
 def pdf_embedding_and_drive(data: PdfRequest):
     try:
         check_authorization = check_drive_auth()
@@ -117,9 +117,9 @@ def pdf_embedding_and_drive(data: PdfRequest):
         
         pdf_buffer = data.buffer.data
         pdf__name = data.pdf_name
-        myPdfInsta.create_pdf_from_buffer(pdf_buffer,pdf__name)
-        
-        return {'reply': 'pdf and its embedding saved successfully'}
+        fileId = myPdfInsta.create_pdf_from_buffer(pdf_buffer,pdf__name)
+        myPdfInsta.createEmbedding()
+        return {'reply': 'PDF saved successfully'}
 
     except Exception as e:
         print(e)
