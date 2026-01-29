@@ -5,23 +5,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ChatController import Chat_HuggingFaceController
 from GoogleDrive import DriveAPI
+from PdfEmbedding import PDFEmbed
 from imageEmbedCreation import ImgEmbedder
+import torch
 app = FastAPI()
 app.add_middleware(CORSMiddleware,allow_origins=['*'],allow_headers=['*'],allow_credentials=True,allow_methods=['*'])
 MODEL = 'meta-llama/Meta-Llama-3-8B-Instruct'
 DB_URI = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
-MODEL_FOLDER = "../siglip_model" 
-
-img_embedder = ImgEmbedder(MODEL_FOLDER)
+IMAGE_MODEL_FOLDER = "../siglip_model"
+PDF_MODEL_FOLDER='../pdf_embedder ' 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+img_embedder = ImgEmbedder(IMAGE_MODEL_FOLDER)
 chat_model = Chat_HuggingFaceController(MODEL,DB_URI)
-mydrive = DriveAPI()
+mydriveInst = DriveAPI()
+myPdfInsta = PDFEmbed(PDF_MODEL_FOLDER,device,mydriveInst)
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
-class EmbeddingData(BaseModel):
+class Buffer_data(BaseModel):
     data: List[int]
 class EmbeddingRequest(BaseModel):
-    buffer: EmbeddingData
+    buffer: Buffer_data
+class PdfRequest(BaseModel):
+    buffer: Buffer_data   
+    pdf_name:str
 class ImageQueryRequest(BaseModel):
     img_query: str
 
@@ -94,7 +101,26 @@ async def handle_callback(request: Request):
     if not auth_code:
         return {"error": "No code"}
     try:
-        mydrive.finalize_login(auth_code)
+        mydriveInst.finalize_login(auth_code)
         return {"message": "Login Successfully"}
     except Exception as e:
         return {"error": str(e)}  
+
+
+
+@app.post('/create-embed')
+def pdf_embedding_and_drive(data: PdfRequest):
+    try:
+        check_authorization = check_drive_auth()
+        if not check_authorization['auth']:
+            return {'url_string': check_authorization['url_string'],'auth':False}
+        
+        pdf_buffer = data.buffer.data
+        pdf__name = data.pdf_name
+        myPdfInsta.create_pdf_from_buffer(pdf_buffer,pdf__name)
+        
+        return {'reply': 'pdf and its embedding saved successfully'}
+
+    except Exception as e:
+        print(e)
+        return {'error': str(e)}

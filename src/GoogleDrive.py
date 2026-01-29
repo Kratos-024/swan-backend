@@ -113,6 +113,20 @@ class DriveAPI:
 
         except HttpError as error:
             print(f"Download error: {error}")
+    def get_specific_file(self,file_id):
+        try:
+            service = build('drive','v3',credentials=self.creds)
+            request = service.files().get(fileId=file_id).execute()
+            if request['name'] != '':
+                return True
+            
+        except Exception as e:
+            print("Error has been occured in get_specific_file ",e)
+            if e.resp.status == 404:
+                return False
+            else:
+                print("Some other error")
+                return False
     def get_documents(self):
         try:
             service = build('drive', 'v3', credentials=self.creds)
@@ -148,5 +162,4 @@ class DriveAPI:
             files = None
 
         return sendFilesMime
-
 
