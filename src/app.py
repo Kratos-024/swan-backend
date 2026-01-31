@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from ChatController import Chat_HuggingFaceController
 from PdfEmbedding import PDFEmbed
 from pydantic import BaseModel
 import torch
@@ -9,7 +10,6 @@ from GoogleDrive import DriveAPI
 import os
 from imageEmbedCreation import ImgEmbedder
 import base64
-
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -18,15 +18,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=['*']
 )
+DB_URI = os.getenv('POSTGRES_URI')
 MODEL = 'meta-llama/Meta-Llama-3-8B-Instruct'
-DB_URI = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
+PDF_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 IMAGE_MODEL_FOLDER = "../siglip_model"
 PDF_MODEL_FOLDER = '../pdf_embeder-bge-base' 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 mydriveInst = DriveAPI()
 img_embedder = ImgEmbedder(IMAGE_MODEL_FOLDER,mydriveInst,device)
-# chat_model = Chat_HuggingFaceController(MODEL, DB_URI)
-myPdfInsta = PDFEmbed(PDF_MODEL_FOLDER, device, mydriveInst)
+chat_model = Chat_HuggingFaceController(MODEL, DB_URI)
+myPdfInsta = PDFEmbed(PDF_MODEL_FOLDER, device, mydriveInst,PDF_MODEL)
 
 class ChatRequest(BaseModel):
     message: str
@@ -82,12 +83,12 @@ async def handle_callback(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
-# @app.post('/chat')
-# def getReply_text(request: ChatRequest):
-#     try:
-#         return {'reply': chat_model.chat(request.message, request.thread_id)}
-#     except Exception as e:
-#         return {'error': str(e)}
+@app.post('/chat')
+def getReply_text(request: ChatRequest):
+    try:
+        return {'reply': chat_model.chat(request.message, request.thread_id)}
+    except Exception as e:
+        return {'error': str(e)}
 
 @app.post('/chat-img')
 def getReply_imgQuery(request: ImageQueryRequest):

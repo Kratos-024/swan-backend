@@ -20,7 +20,7 @@ LOCAL_VECTOR_FOLDER = 'pdf_vectors_store'
 RESULT_JSON_FILE = 'result.json'
 
 class PDFEmbed:
-    def __init__(self, model_path, device, myDriveInst, repo_id="Qwen/Qwen2.5-7B-Instruct"):
+    def __init__(self, model_path, device, myDriveInst,repo_id):
         self.model_path = model_path
         self.device = device
         self.myDrive = myDriveInst
@@ -225,7 +225,7 @@ class PDFEmbed:
         del all_pages
         gc.collect()
 
-    def search_query(self, query_text, k=2):
+    def search_query(self, query_text, k=3):
         intent = self.formatTheQuery(query_text)
         if "NEGATIVE" in intent:
             try:

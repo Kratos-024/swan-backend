@@ -1,4 +1,3 @@
-import base64
 import io
 import uuid
 import numpy as np
