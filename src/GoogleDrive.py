@@ -1,219 +1,208 @@
-from langchain_google_community import GoogleDriveLoader
+import os
+import io
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-import os
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
-import io
-SCOPE = ['https://www.googleapis.com/auth/drive','https://www.googleapis.com/auth/drive.file']
+load_dotenv()
+SCOPE = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.file']
+VECTOR_ZIP_NAME = 'pdf_vectors_archive.zip'
+LOCAL_VECTOR_FOLDER = 'pdf_vectors_store'
+
 class DriveAPI:
     def __init__(self):
         self.cred_path = '../credentials.json'
         self.token_path = '../google_token.json'
-        self.parentImgVectorsFolderID = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4'
+        self.parentImgVectorsFolderID = '1vgCCefOk8pjm1j3mwAJKlj90XNbmihu4' 
+        self.parentPdfVectorsFolderID = None
+        self.parentPdfFolderID = None
         self.creds = None
+        self.service = None
         self.cred_state = False
         self.cred_url = None
-        self.loader = None
-        self.flow = None 
-        self.parentPdfVectorsFolderID = None
-        
+        self._authenticate()
+        if self.cred_state and self.service:
+            self.create_initial_folders()
+
+    def _authenticate(self):
+     
         if os.path.exists(self.token_path):
             self.creds = Credentials.from_authorized_user_file(self.token_path)
-        
         if self.creds and self.creds.valid:
             self.cred_state = True
         elif self.creds and self.creds.expired and self.creds.refresh_token:
-            self.creds.refresh(Request())
-            self.cred_state = True
-            with open(self.token_path, 'w') as f:
-                f.write(self.creds.to_json())
-        
+            try:
+                self.creds.refresh(Request())
+                with open(self.token_path, 'w') as f:
+                    f.write(self.creds.to_json())
+                self.cred_state = True
+            except Exception as e:
+                print(f"Error refreshing token: {e}")
+                self.cred_state = False
         else:
             self.cred_state = False
+        if not self.cred_state:
             if os.environ.get("PROD") == "true":
                 redirect_uri = os.environ.get("PROD_URL") 
             else:
                 redirect_uri = "http://127.0.0.1:8000/oauth2callback"  
 
             self.flow = Flow.from_client_secrets_file(
-                self.cred_path,
-                scopes=SCOPE,
-                redirect_uri=redirect_uri
+                self.cred_path, scopes=SCOPE, redirect_uri=redirect_uri
             )
+            self.cred_url, _ = self.flow.authorization_url(prompt='consent')
+            print(f"Auth required. URL generated: {self.cred_url}")
+            return
+        self.service = build('drive', 'v3', credentials=self.creds)
+    def oauth2callback(self,auth_code):
+        try:
+            self.flow.fetch_token(code=auth_code)
+            self.creds = self.flow.credentials
+            with open(self.token_path,'w') as f:
+                f.write(self.creds.to_json())
+            self.cred_state = True
 
-            self.cred_url, _ = self.flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='true'
-            )
+            self.service = build('drive', 'v3', credentials=self.creds)
 
-        if self.cred_state:
-            self.loader = GoogleDriveLoader(
-                folder_id=self.folder_id,
-                token_path=self.token_path,
-                credentials_path=self.cred_path,
-                recursive=False
-            )
-        if not (self.parentPdfVectorsFolderID and self.folder_id):
-            self.create_initial_folders()
+            return True
+        except Exception as e:
+            print("OAuth callback error:", e)
+            self.cred_state = False
+            return False
+
+
+
     def create_initial_folders(self):
         try:
-            service = build('drive','v3',credentials=self.creds)
-            file_pdfEmb_metadata = {
-                 'name':"ImgVectors",
-                 "mimeType": "application/vnd.google-apps.folder",
-            }
-            file_imgEmb_metadata = {
-                'name':"PdfVectors",
-                 "mimeType": "application/vnd.google-apps.folder",
-            }
-            file_Img_vectors = service.files().create(body=file_pdfEmb_metadata,fields="id").execute()
-            file_Pdf_vectors = service.files().create(body=file_imgEmb_metadata,fields="id").execute()
-           
-            self.parentPdfVectorsFolderID=file_Pdf_vectors.get('id')
-            self.parentImgVectorsFolderID=file_Img_vectors.get('id')
-            return {'success':True}
-        except Exception as e:
-            print('error occured in create_initial_folders',e)
-    def finalize_login(self, code):
-        self.flow.fetch_token(code=code)
-        self.creds = self.flow.credentials
-        
-        with open(self.token_path, 'w') as f:
-            f.write(self.creds.to_json())
-            
-        self.cred_state = True
-        
-        self.loader = GoogleDriveLoader(
-            folder_id=self.folder_id,
-            token_path=self.token_path,
-            credentials_path=self.cred_path,
-            recursive=False
-        )
-        return True
-    def upload_file(self,filename):
-        try:
-            service = build("drive", "v3", credentials=self.creds)
-            file_metadata = {
-                "name": filename,
-                "parents": [self.parentPdfVectorsFolderID] 
-            }
-            media = MediaFileUpload(filename, mimetype='application/octet-stream')
-            file = service.files().create(
-                body=file_metadata, 
-                media_body=media, 
-                fields="id"
-            ).execute()
-            
-            file_id = file.get("id")
-            return file_id
 
+            self.parentImgVectorsFolderID = self._get_or_create_folder("ImgVectors")
+            self.parentPdfVectorsFolderID = self._get_or_create_folder("PdfVectors")
+            self.parentPdfFolderID = self._get_or_create_folder("Pdfs")
+
+        except Exception as e:
+            print(f'error has been occured in create_initial_folders: {e}')
+
+    def _get_or_create_folder(self, folder_name):
+        query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = self.service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        files = results.get('files', [])
+        
+        if files:
+            print(f"Found folder {folder_name}: {files[0]['id']}")
+            return files[0]['id']
+        else:
+            file_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            folder = self.service.files().create(body=file_metadata, fields='id').execute()
+            print(f"created {folder_name}:{folder.get('id')}")
+            return folder.get('id')
+
+    def upload_pdf_file(self, filename):
+        try:
+            file_metadata = {'name': filename, 'parents': [self.parentPdfFolderID]}
+            media = MediaFileUpload(filename, mimetype='application/pdf')
+            file = self.service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+           
+            return file.get('id')
         except HttpError as error:
-            print(f"error: {error}")
+            print(f"error has been occured in upload_pdf_file: {error}")
             return None
-    
+
+    def search_vector_zip(self):
+        try:
+            query = f"'{self.parentPdfVectorsFolderID}' in parents and name = '{VECTOR_ZIP_NAME}' and trashed = false"
+            results = self.service.files().list(q=query, fields="files(id, name)").execute()
+            files = results.get('files', [])
+            if files:
+                return files[0] 
+            return None
+        except HttpError as e:
+            print(f"error searching the vector zip: {e}")
+            return None
+
     def download_file(self, file_id, output_filename):
         try:
-            service = build('drive', 'v3', credentials=self.creds)
-
-            request = service.files().get_media(fileId=file_id)
+            request = self.service.files().get_media(fileId=file_id)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
             done = False
             while done is False:
-                 done = downloader.next_chunk()
+                status, done = downloader.next_chunk()
+            
             fh.seek(0)
             with open(output_filename, 'wb') as f:
                 f.write(fh.read())
-            
-
+            print(f"Downloaded {output_filename}")
+            return True
         except HttpError as error:
             print(f"Download error: {error}")
-    def get_specific_file(self,file_id):
-        try:
-            service = build('drive','v3',credentials=self.creds)
-            request = service.files().get(fileId=file_id).execute()
-            if request['name'] != '':
-                return True
-            
-        except Exception as e:
-            print("Error has been occured in get_specific_file ",e)
-            if e.resp.status == 404:
-                return False
-            else:
-                print("Some other error")
-                return False
-    def get_all_pdf_vectors(self):
-        try:
-            service = build('drive', 'v3', credentials=self.creds)
-            files = []
-            page_token = None
-            
-            while True:
-        
-                query = f"'{self.parentPdfVectorsFolderID}' in parents "
-                response = (
-                    service.files().list(
-                        q=f'{query}',
-                        spaces='drive',
-                        fields="nextPageToken, files(id, name, mimeType)", 
-                        pageToken=page_token,
-                        supportsAllDrives=True, 
-                        includeItemsFromAllDrives=True
-                    ).execute()
-                )
-                
-                found_files = response.get('files', [])
-                sendFilesMime = []
-                for file in found_files:
-                    sendFilesMime.append({"name":file.get('name'),"type":file.get('mimeType'), 'id':file.get('id')})
-                files.extend(found_files)
-                page_token = response.get("nextPageToken", None)
-                
-                if page_token is None:
-                    break
-                    
-        except HttpError as error:
-            print(f"An error occurred: {error}")
-            files = None
+            return False
 
-        return sendFilesMime
-    def get_documents(self):
+    def upload_or_update_vector_zip(self, local_zip_path):
+        existing_file = self.search_vector_zip()
+        media = MediaFileUpload(local_zip_path, mimetype='application/zip', resumable=True)
+        if existing_file:
+            self.service.files().update(
+                fileId=existing_file['id'],
+                media_body=media
+            ).execute()
+        else:
+            file_metadata = {
+                'name': VECTOR_ZIP_NAME,
+                'parents': [self.parentPdfVectorsFolderID]
+            }
+            self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+    def search_vector_img(self,file_path):
         try:
-            service = build('drive', 'v3', credentials=self.creds)
-            files = []
-            page_token = None
-            
-            while True:
+            query = f"'{self.parentImgVectorsFolderID}' in parents and name = '{file_path}' and trashed = false"
+            results = self.service.files().list(q=query, fields="files(id, name)").execute()
+            files = results.get('files', [])
+            if files:
+                return files[0] 
+            return None
+        except HttpError as e:
+            print(f"error searching the image json: {e}")
+            return None
+    def upload_vector_img(self,file_path):
+        existing_file = self.search_vector_img(file_path)
         
-                query = f"'{self.folder_id}' in parents "
-                response = (
-                    service.files().list(
-                        q=f'{query}',
-                        spaces='drive',
-                        fields="nextPageToken, files(id, name, mimeType)", 
-                        pageToken=page_token,
-                        supportsAllDrives=True, 
-                        includeItemsFromAllDrives=True
-                    ).execute()
-                )
-                
-                found_files = response.get('files', [])
-                sendFilesMime = []
-                for file in found_files:
-                    sendFilesMime.append({"name":file.get('name'),"type":file.get('mimeType'), 'id':file.get('id')})
-                files.extend(found_files)
-                page_token = response.get("nextPageToken", None)
-                
-                if page_token is None:
-                    break
-                    
-        except HttpError as error:
-            print(f"An error occurred: {error}")
-            files = None
-
-        return sendFilesMime
+        media = MediaFileUpload(file_path, mimetype='application/octet-stream', resumable=True)
+        if existing_file:
+            self.service.files().update(
+                fileId=existing_file['id'],
+                media_body=media
+            ).execute()
+        else:
+            file_metadata = {
+                'name': file_path,
+                'parents': [self.parentImgVectorsFolderID]
+            }
+            self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+    def upload_image(self, image_path):
+            actual_filename = os.path.basename(image_path)
+            
+            media = MediaFileUpload(image_path, mimetype='image/png') 
+            file_metadata = {
+                'name': actual_filename, 
+                'parents': [self.parentImgVectorsFolderID] 
+            }
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            return file.get('id')
 
