@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from PdfEmbedding import PDFEmbed
 from pydantic import BaseModel
 import torch
@@ -109,9 +110,8 @@ def createEmbeddingRoute(data: EmbeddingRequest):
     try:
         auth = check_drive_auth()
         if not auth.get('auth'): return auth
-        
+    
         img_embedder.add_image(bytes(data.buffer.data))
-
         return {'reply': 'Embeddings created'}
     except Exception as e:
         return {'error': str(e)}
@@ -123,7 +123,6 @@ def pdf_embedding_and_drive(data: PdfRequest):
         if not auth.get('auth'): return auth
         fileId = myPdfInsta.create_pdf_from_buffer(data.buffer.data, data.pdf_name)
         myPdfInsta.createEmbedding(fileId)
-        
         return {'reply': 'PDF metadata indexed successfully'}
     except Exception as e:
         print('Error:', e)
@@ -138,32 +137,32 @@ def pdf_query_search(data: PdfQuerySearch):
         results = myPdfInsta.search_query(data.Pdf_query, k=2)
         if not results:
             return {'reply': []}
-      
-        response_list = []
-        for doc in results:
-            meta = doc.metadata 
-            cover_id = meta.get('coverPageid')
-            base64Bytes = None
-            
-            if cover_id:
-                temp_name = f"{cover_id}_temp.png"
-                try:
-                    mydriveInst.download_file(cover_id, temp_name)
-                    base64Bytes = createBase64Bytes(temp_name)
-                except Exception as e:
-                    print(f"Cover download failed: {e}")
-                finally:
-                    if os.path.exists(temp_name): os.remove(temp_name)
+        if not 'pdfBytes' in results:
+            response_list = []
+            for doc in results:
+                meta = doc.metadata 
+                cover_id = meta.get('coverPageid')
+                base64Bytes = None
+                
+                if cover_id:
+                    temp_name = f"{cover_id}_temp.png"
+                    try:
+                        mydriveInst.download_file(cover_id, temp_name)
+                        base64Bytes = createBase64Bytes(temp_name)
+                    except Exception as e:
+                        print(f"Cover download failed: {e}")
+                    finally:
+                        if os.path.exists(temp_name): os.remove(temp_name)
 
-            response_list.append({
-                'File_Name': meta.get('fileName', 'Unknown'),
-                'date': meta.get('date', ''),
-                'total_pages': meta.get('total_pages', 'N/A'),
-                'cover_buffer': base64Bytes
-            })
-
-        return {'reply': response_list}
-
+                response_list.append({
+                    'File_Name': meta.get('fileName', 'Unknown'),
+                    'date': meta.get('date', ''),
+                    'total_pages': meta.get('total_pages', 'N/A'),
+                    'cover_buffer': base64Bytes
+                })
+            return {'reply': response_list}
+        elif 'pdfBytes' in results:
+            return JSONResponse(content={'reply':results['pdfBytes'],'pdf_name':results['pdf_name']})
     except Exception as e:
         print('Error in pdf_query_search:', e)
         return {'error in pdf_query_search': str(e)}

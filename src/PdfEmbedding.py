@@ -1,3 +1,4 @@
+import base64
 import io
 import os
 from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace, HuggingFaceEndpoint
@@ -43,7 +44,7 @@ class PDFEmbed:
         buffer = io.BytesIO()
         buffer.write(pdf_bytes)
         buffer.seek(0)
-        
+
         try:
             with open(pdf_file_name, 'wb') as f:
                 f.write(buffer.getbuffer())
@@ -133,7 +134,12 @@ class PDFEmbed:
         
         if "NEGATIVE" in response: return response
         return "POSITIVE"
-    
+    def getThePdfBytes(self,file_name):
+        with open(file_name,'+rb') as f:
+            pdf_bytes = f.read()
+
+        pdf_bytes = base64.b64encode(pdf_bytes).decode('utf-8')
+        return pdf_bytes
     def handle_selection(self, index):
         if not os.path.exists(RESULT_JSON_FILE):
             return [] 
@@ -148,13 +154,10 @@ class PDFEmbed:
                 
                 if file_id:
                     self.myDrive.download_file(file_id, file_name)
-                restored_doc = Document(
-                    page_content=doc_data['page_content'], 
-                    metadata=doc_data['metadata']
-                )
+                pdfBytes = self.getThePdfBytes(file_name)
                 os.remove(RESULT_JSON_FILE)
-                
-                return [restored_doc]
+                os.remove(file_name)
+                return {'pdfBytes':pdfBytes,'pdf_name':file_name}
             else:
                 return []
         except Exception as e:
@@ -230,7 +233,6 @@ class PDFEmbed:
                 
                 if match:
                     index = int(match.group())
-                    print(f"Parsed Index: {index}")
                     return self.handle_selection(index)
                     
             except Exception as e:

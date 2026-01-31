@@ -107,7 +107,7 @@ class DriveAPI:
             file_metadata = {'name': filename, 'parents': [self.parentPdfFolderID]}
             media = MediaFileUpload(filename, mimetype='application/pdf')
             file = self.service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-           
+            os.remove(filename)
             return file.get('id')
         except HttpError as error:
             print(f"error has been occured in upload_pdf_file: {error}")
