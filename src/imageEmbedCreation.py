@@ -26,6 +26,7 @@ class ImgEmbedder:
 
     def load_state(self):
         found_json = self.mydrive.search_vector_img(self.json_filename)
+       
         if found_json and 'id' in found_json:
             self.json_file_id = found_json['id']
             self.mydrive.download_file(self.json_file_id, self.json_filename)

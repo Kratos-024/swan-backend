@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 import gdown
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import Flow,InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -25,6 +25,8 @@ class DriveAPI:
         self.cred_state = False
         self.cred_url = None
         self._authenticate()
+        if not self.cred_state:
+            self.authorize_in_terminal()
         if self.cred_state and self.service:
             self.create_initial_folders()
     def download_models(self):
@@ -171,8 +173,21 @@ class DriveAPI:
                 media_body=media,
                 fields='id'
             ).execute()
-    def search_vector_img(self,file_path):
+    def authorize_in_terminal(self):
         try:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                self.cred_path,SCOPE
+            )
+            self.creds = flow.run_local_server(port=0)
+
+            with open(self.token_path,'w') as f:
+                f.write(self.creds.to_json())
+            self.cred_state=True
+            self.service = build('drive', 'v3', credentials=self.creds)
+        except Exception as e:
+            print(f"Terminal Auth failed: {e}")
+    def search_vector_img(self,file_path):
+        try:     
             query = f"'{self.parentImgVectorsFolderID}' in parents and name = '{file_path}' and trashed = false"
             results = self.service.files().list(q=query, fields="files(id, name)").execute()
             files = results.get('files', [])
