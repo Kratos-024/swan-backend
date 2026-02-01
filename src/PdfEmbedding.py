@@ -44,7 +44,7 @@ class PDFEmbed:
         buffer = io.BytesIO()
         buffer.write(pdf_bytes)
         buffer.seek(0)
-
+        print(pdf_file_name)
         try:
             with open(pdf_file_name, 'wb') as f:
                 f.write(buffer.getbuffer())
@@ -53,8 +53,8 @@ class PDFEmbed:
             print(f"error occured in create_pdf_from_buffer: {e}")
         finally:
             buffer.close()
-            
-        return self.myDrive.upload_pdf_file(pdf_file_name)
+        print('final_content','we camed2')
+        return self.myDrive.upload_pdf_file(self.pdf_path_name)
 
     def get_buffer_cover(self, fileId):
         try:
@@ -196,7 +196,8 @@ class PDFEmbed:
         new_vector_store = FAISS.from_documents([summary_doc], self.embedding_model)
         final_vector_store = None
         drive_zip = self.myDrive.search_vector_zip()
-        
+      
+
         if drive_zip:
             self.myDrive.download_file(drive_zip['id'], VECTOR_ZIP_NAME)
             if os.path.exists(LOCAL_VECTOR_FOLDER):
@@ -223,6 +224,7 @@ class PDFEmbed:
         del new_vector_store
         del final_vector_store
         del all_pages
+        os.remove(self.pdf_path_name)
         gc.collect()
 
     def search_query(self, query_text, k=3):

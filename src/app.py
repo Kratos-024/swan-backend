@@ -115,7 +115,7 @@ def createEmbeddingRoute(data: EmbeddingRequest):
         if not auth.get('auth'): return auth
     
         img_embedder.add_image(bytes(data.buffer.data))
-        return {'reply': 'Embeddings created'}
+        return {'reply': 'Image Saved and indexed Successfully '}
     except Exception as e:
         return {'error': str(e)}
 
