@@ -3,6 +3,7 @@ import io
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+import gdown
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -26,10 +27,19 @@ class DriveAPI:
         self._authenticate()
         if self.cred_state and self.service:
             self.create_initial_folders()
-
+    def download_models(self):
+        if not os.path.exists('../pdf_embeder-bge-base'):
+            print("**************************************Downloading Model 1******************************")
+            model_folder = 'https://drive.google.com/drive/folders/1SZJI2xUako091gF3itdfFvlSTU8hkzzY?usp=sharing'
+            gdown.download_folder(url=model_folder,output="../pdf_embeder-bge-base", quiet=False, use_cookies=False)
+        if not os.path.exists('../siglip_model'):
+            print("**************************************Downloading Model 2******************************")
+            model_folder = 'https://drive.google.com/drive/folders/1tTBDlG7q14vTaBap9bgvjTm-eT2-_0pv?usp=sharing'
+            gdown.download_folder(url=model_folder,output="../siglip_model", quiet=False, use_cookies=False)
     def _authenticate(self):
      
         if os.path.exists(self.token_path):
+            
             self.creds = Credentials.from_authorized_user_file(self.token_path)
         if self.creds and self.creds.valid:
             self.cred_state = True

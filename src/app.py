@@ -21,10 +21,12 @@ app.add_middleware(
 DB_URI = os.getenv('POSTGRES_URI')
 MODEL = 'meta-llama/Meta-Llama-3-8B-Instruct'
 PDF_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+
 IMAGE_MODEL_FOLDER = "../siglip_model"
 PDF_MODEL_FOLDER = '../pdf_embeder-bge-base' 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 mydriveInst = DriveAPI()
+mydriveInst.download_models()
 img_embedder = ImgEmbedder(IMAGE_MODEL_FOLDER,mydriveInst,device)
 chat_model = Chat_HuggingFaceController(MODEL, DB_URI)
 myPdfInsta = PDFEmbed(PDF_MODEL_FOLDER, device, mydriveInst,PDF_MODEL)

@@ -9,6 +9,7 @@ langsmith
 torch
 uvicorn[standard]
 requests
+gdown
 google_auth_oauthlib
 langgraph-checkpoint-postgres
 httpx
